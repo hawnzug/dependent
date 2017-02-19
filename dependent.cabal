@@ -19,9 +19,12 @@ library
                      , Core
                      , Syntax
                      , Parser
+                     , Pretty
   build-depends:       base >= 4.7 && < 5
                      , parsec
                      , text
+                     , containers
+                     , haskeline
   default-language:    Haskell2010
 
 executable dependent-exe

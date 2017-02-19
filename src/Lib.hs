@@ -1,9 +1,23 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Lib
-    ( someFunc
+    ( repl
     ) where
+
+import System.Console.Haskeline
+import qualified Data.Text as T
 
 import Core
 import Parser
+import Pretty
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
+repl :: IO ()
+repl = runInputT defaultSettings loop
+   where
+       loop :: InputT IO ()
+       loop = do
+           minput <- getInputLine "% "
+           case minput of
+               Nothing -> return ()
+               Just "quit" -> return ()
+               Just input -> do outputStrLn $ T.unpack $ pretty (nf emptyContext (parseExpr (T.pack input)))
+                                loop
