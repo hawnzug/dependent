@@ -49,12 +49,6 @@ var = do
     var <- ident
     return (Var var )
 
-app :: Parser Expr
-app = do
-    e1 <- expr
-    e2 <- expr
-    return (App e1 e2)
-
 universe :: Parser Expr
 universe = do
     reserved "Type"
@@ -82,18 +76,13 @@ tpi = do
     abs <- abstr "->"
     return (Pi abs)
 
-ntpi :: Parser (Expr -> Expr -> Expr)
-ntpi = do
-    reservedOp "->"
-    return (\t b -> Pi Abstraction{bound="_", typ=t, body=b})
-
 expr :: Parser Expr
 expr = do
     es <- many1 aexp
     return (foldl1 App es)
 
 aexp :: Parser Expr
-aexp = chainr1 (tpi <|> universe <|> fun <|> var <|> parens expr) ntpi
+aexp = tpi <|> universe <|> fun <|> var <|> parens expr
 
 contents :: Parser a -> Parser a
 contents p = do
