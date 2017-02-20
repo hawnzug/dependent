@@ -35,6 +35,9 @@ parens = Tok.parens lexer
 reservedOp :: T.Text -> Parser ()
 reservedOp op = Tok.reservedOp lexer (T.unpack op)
 
+reserved :: T.Text -> Parser ()
+reserved name = Tok.reserved lexer (T.unpack name)
+
 ident :: Parser T.Text
 ident = T.pack <$> Tok.identifier lexer
 
@@ -54,7 +57,7 @@ app = do
 
 universe :: Parser Expr
 universe = do
-    reservedOp "Type"
+    reserved "Type"
     num <- natural
     return (Universe (fromIntegral num))
 
@@ -65,7 +68,7 @@ abstr arrow = do
     typ <- expr
     reservedOp arrow
     rhs <- expr
-    return Abstraction {bound = binder, typ = typ, body = rhs}
+    return Abstraction{bound=binder, typ=typ, body=rhs}
 
 fun :: Parser Expr
 fun = do
@@ -79,16 +82,59 @@ tpi = do
     abs <- abstr "->"
     return (Pi abs)
 
+ntpi :: Parser (Expr -> Expr -> Expr)
+ntpi = do
+    reservedOp "->"
+    return (\t b -> Pi Abstraction{bound="_", typ=t, body=b})
+
 expr :: Parser Expr
 expr = do
     es <- many1 aexp
     return (foldl1 App es)
 
 aexp :: Parser Expr
-aexp = tpi <|> universe <|> fun <|> var <|> parens expr
+aexp = chainr1 (tpi <|> universe <|> fun <|> var <|> parens expr) ntpi
 
-parseExpr :: T.Text -> Expr
-parseExpr input =
-    case parse expr "<stdin>" input of
-      Left err -> error (show err)
-      Right ast -> ast
+contents :: Parser a -> Parser a
+contents p = do
+  Tok.whiteSpace lexer
+  r <- p
+  eof
+  return r
+
+parseExpr :: T.Text -> Either ParseError Expr
+parseExpr = parse (contents expr) "<stdin>"
+
+para :: Parser Command
+para = do
+    reserved "Parameter"
+    n <- ident
+    reservedOp ":"
+    t <- expr
+    return (Parameter n t)
+
+def :: Parser Command
+def = do
+    reserved "Definition"
+    n <- ident
+    reservedOp ":="
+    e <- expr
+    return (Definition n e)
+
+check :: Parser Command
+check = do
+    reserved "Check"
+    e <- expr
+    return (Check e)
+
+eval :: Parser Command
+eval = do
+    reserved "Eval"
+    e <- expr
+    return (Eval e)
+
+command :: Parser Command
+command = para <|> def <|> check <|> eval
+
+parseCommand :: T.Text -> Either ParseError Command
+parseCommand = parse (contents command) "<stdin>"

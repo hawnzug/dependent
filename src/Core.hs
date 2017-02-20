@@ -45,7 +45,7 @@ nf ctx (Var x) = case Map.lookup x ctx of
 nf ctx e@(Universe k) = e
 nf ctx (App f a) = case nf ctx f of
                      Lambda abstr -> nf ctx (subst (body abstr) (bound abstr) (nf ctx a))
-                     e -> e
+                     e -> App e (nf ctx a)
 nf ctx (Lambda abstr) = Lambda (nfAbstr ctx abstr)
 nf ctx (Pi abstr) = Pi (nfAbstr ctx abstr)
 
@@ -110,3 +110,9 @@ inferPi ctx e = case nf ctx t of
 
 emptyContext :: Context
 emptyContext = Map.empty
+
+addType :: Name -> Expr -> Context -> Context
+addType n t = Map.insert n (t, Nothing)
+
+addDef :: Name -> Expr -> Expr -> Context -> Context
+addDef n t e = Map.insert n (t, Just e)
