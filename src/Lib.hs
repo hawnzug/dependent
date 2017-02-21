@@ -42,9 +42,13 @@ command ctx input =
       Right (Parameter n t) -> let newCtx = addType n t ctx
                                    output = T.append n " is assumed."
                                 in (newCtx, T.unpack output)
-      Right (Definition n e) -> let newCtx = addDef n t e ctx
-                                    t = infer ctx e
-                                    output = T.append n " is assumed."
-                                 in (newCtx, T.unpack output)
+
+      Right (Definition n e) -> case infer ctx e of
+                                  Left err -> (ctx, T.unpack err)
+                                  Right t -> let newCtx = addDef n t e ctx
+                                                 output = T.append n " is assumed."
+                                              in (newCtx, T.unpack output)
       Right (Eval e) -> (ctx, T.unpack $ pretty (nf ctx e))
-      Right (Check e) -> (ctx, T.unpack $ pretty (infer ctx e))
+      Right (Check e) -> (ctx, T.unpack $ case infer ctx e of
+                                            Left err -> err
+                                            Right t -> pretty t)

@@ -74,39 +74,41 @@ eqAbstr abs1 abs2 = alphaEq t1 t2 && alphaEq b1 (subst b2 n2 (Var n1))
 betaEq :: Context -> Expr -> Expr -> Bool
 betaEq ctx e1 e2 = alphaEq (nf ctx e1) (nf ctx e2)
 
-infer :: Context -> Expr -> Expr
+infer :: Context -> Expr -> Either T.Text Expr
 infer ctx (Var x) = case Map.lookup x ctx of
-                      Just (t, _) -> t
-                      Nothing -> error "cannot find var"
-infer ctx (Universe k) = Universe (k+1)
-infer ctx (Pi abstr) = Universe (max k1 k2)
-    where k1 = inferUniverse ctx t1
-          k2 = inferUniverse (Map.insert (bound abstr) (t1, Nothing) ctx) (body abstr)
-          t1 = typ abstr
-infer ctx (Lambda abstr) = Pi Abstraction{bound=n, typ=t, body=tb}
-    where n = bound abstr
-          t = typ abstr
-          tb = infer (Map.insert n (t, Nothing) ctx) (body abstr)
-infer ctx (App f a) = if betaEq ctx t1 t2
-                         then subst b n a
-                         else error "function type error"
-                             where abstr = inferPi ctx f
-                                   n = bound abstr
-                                   t1 = typ abstr
-                                   b = body abstr
-                                   t2 = infer ctx a
+                      Just (t, _) -> Right t
+                      Nothing -> Left "cannot find var"
+infer ctx (Universe k) = return $ Universe (k+1)
+infer ctx (Pi abstr) = do
+    k1 <- inferUniverse ctx t1
+    k2 <- inferUniverse (Map.insert (bound abstr) (t1, Nothing) ctx) (body abstr)
+    return $ Universe (max k1 k2)
+        where t1 = typ abstr
+infer ctx (Lambda abstr) = do
+    tb <- infer (Map.insert n (t, Nothing) ctx) (body abstr)
+    return $ Pi Abstraction{bound=n, typ=t, body=tb}
+        where n = bound abstr
+              t = typ abstr
+infer ctx (App f a) = do
+    Abstraction{bound=n, typ=t1, body=b} <- inferPi ctx f
+    t2 <- infer ctx a
+    if betaEq ctx t1 t2
+       then return $ subst b n a
+       else Left "function type error"
 
-inferUniverse :: Context -> Expr -> Int
-inferUniverse ctx t = case nf ctx u of
-                         Universe k -> k
-                         _ -> error "type expected"
-                       where u = infer ctx t
+inferUniverse :: Context -> Expr -> Either T.Text Int
+inferUniverse ctx t = do
+    u <- infer ctx t
+    case nf ctx u of
+      Universe k -> return k
+      _ -> Left "type expected"
 
-inferPi :: Context -> Expr -> Abstraction
-inferPi ctx e = case nf ctx t of
-                   Pi a -> a
-                   _ -> error "function expected"
-                where t = infer ctx e
+inferPi :: Context -> Expr -> Either T.Text Abstraction
+inferPi ctx e = do
+    t <- infer ctx e
+    case nf ctx t of
+      Pi a -> return a
+      _ -> Left "function expected"
 
 emptyContext :: Context
 emptyContext = Map.empty
