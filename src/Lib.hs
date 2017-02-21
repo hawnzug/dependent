@@ -5,14 +5,24 @@ module Lib
 
 import System.Console.Haskeline
 import qualified Data.Text as T
+import Data.List (isPrefixOf)
 
 import Core (nf, Context, emptyContext, addType, addDef, infer)
 import Parser (parseExpr, parseCommand)
 import Syntax
 import Pretty
 
+completeOptions :: [String]
+completeOptions = ["Parameter", "Definition", "Eval", "Check", "quit"]
+
+searchWords :: String -> [Completion]
+searchWords str = map simpleCompletion $ filter (str `isPrefixOf`) completeOptions
+
+mySettings :: Settings IO
+mySettings = setComplete (completeWord Nothing " \t" (return . searchWords)) defaultSettings
+
 repl :: IO ()
-repl = runInputT defaultSettings (loop emptyContext)
+repl = runInputT mySettings (loop emptyContext)
    where
        loop :: Context -> InputT IO ()
        loop ctx = do
@@ -23,6 +33,7 @@ repl = runInputT defaultSettings (loop emptyContext)
                Just input -> let (newCtx, output) = command ctx input in
                                  do outputStrLn output
                                     loop newCtx
+
 
 command :: Context -> String -> (Context, String)
 command ctx input =
