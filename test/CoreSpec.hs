@@ -22,8 +22,8 @@ spec = do
         it "\\x : y . x == \\a : t . a" $
             alpha "fun x : y => x" "fun a : y => a" `shouldBe` True
         it "(\\x : y -> y . x)(\\x : y . x) == (\\a : y -> y . a)(\\b : y . b)" $
-            alpha "(fun x : forall u : y -> y => x) (fun x : y => x)"
-                  "(fun a : forall u : y -> y => a) (fun b : y => b)"
+            alpha "(fun x : y -> y => x) (fun x : y => x)"
+                  "(fun a : y -> y => a) (fun b : y => b)"
                   `shouldBe` True
         it "\\a : Type 0 . a == \\b : Type 0 . b" $
             alpha "fun a : Type 0 => a"

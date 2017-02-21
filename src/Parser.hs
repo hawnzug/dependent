@@ -70,19 +70,35 @@ fun = do
     abs <- abstr "=>"
     return (Lambda abs)
 
-tpi :: Parser Expr
-tpi = do
-    reservedOp "forall"
-    abs <- abstr "->"
-    return (Pi abs)
+typeLeft :: Parser (Name, Expr)
+typeLeft = do
+    binder <- try $ do
+        reservedOp "("
+        binder <- ident
+        reservedOp ":"
+        return binder
+    typ <- expr
+    reservedOp ")"
+    return (binder, typ)
 
 expr :: Parser Expr
-expr = do
-    es <- many1 aexp
-    return (foldl1 App es)
+expr = scan
+    where scan = do ee <- expr1
+                    case ee of
+                      Left e -> rest "_" e <|> return e
+                      Right (n, e) -> rest n e
+          rest n t = do reservedOp "->"
+                        e <- scan
+                        return (Pi Abstraction{bound=n, typ=t, body=e})
+
+
+expr1 :: Parser (Either Expr (Name, Expr))
+expr1 = fmap Right typeLeft <|>
+        do es <- many1 aexp
+           return (Left (foldl1 App es))
 
 aexp :: Parser Expr
-aexp = tpi <|> universe <|> fun <|> var <|> parens expr
+aexp = universe <|> fun <|> var <|> parens expr
 
 contents :: Parser a -> Parser a
 contents p = do
