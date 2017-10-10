@@ -2,13 +2,13 @@ name:                dependent
 version:             0.1.0.0
 -- synopsis:
 -- description:
-homepage:            https://github.com/githubuser/dependent#readme
+homepage:            https://github.com/hawnzug/dependent#readme
 license:             BSD3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2017 Author name here
-category:            Web
+author:              hawnzug
+maintainer:          hawnzug@gmail.com
+copyright:           2017 hawnzug
+category:            Compiler
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
