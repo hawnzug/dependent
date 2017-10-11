@@ -2,7 +2,6 @@
 module Parser where
 
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
 import Data.Functor.Identity (Identity)
 import Text.Parsec
 import Text.Parsec.Text
@@ -45,15 +44,10 @@ natural :: Parser Integer
 natural = Tok.natural lexer
 
 var :: Parser Expr
-var = do
-    var <- ident
-    return (Var var )
+var = Var <$> ident
 
 universe :: Parser Expr
-universe = do
-    reserved "Type"
-    num <- natural
-    return (Universe (fromIntegral num))
+universe = reserved "Type" >> Universe . fromIntegral <$> natural
 
 abstr :: T.Text -> Parser Abstraction
 abstr arrow = do
@@ -62,13 +56,10 @@ abstr arrow = do
     typ <- expr
     reservedOp arrow
     rhs <- expr
-    return Abstraction{bound=binder, typ=typ, body=rhs}
+    return $ Abstraction binder typ rhs
 
 fun :: Parser Expr
-fun = do
-    reservedOp "fun"
-    abs <- abstr "=>"
-    return (Lambda abs)
+fun = reservedOp "fun" >> Lambda <$> abstr "=>"
 
 typeLeft :: Parser (Name, Expr)
 typeLeft = do
@@ -86,26 +77,24 @@ expr = scan
     where scan = do ee <- expr1
                     case ee of
                       Left e -> rest "_" e <|> return e
-                      Right (n, e) -> rest n e
+                      Right (n, e) -> rest n e <|> return e
           rest n t = do reservedOp "->"
                         e <- scan
-                        return (Pi Abstraction{bound=n, typ=t, body=e})
-
+                        return $ Pi $ Abstraction n t e
 
 expr1 :: Parser (Either Expr (Name, Expr))
-expr1 = fmap Right typeLeft <|>
-        do es <- many1 aexp
-           return (Left (foldl1 App es))
+expr1 = Right <$> typeLeft
+    <|> Left . foldl1 App <$> many1 aexp
 
 aexp :: Parser Expr
 aexp = universe <|> fun <|> var <|> parens expr
 
 contents :: Parser a -> Parser a
 contents p = do
-  Tok.whiteSpace lexer
-  r <- p
-  eof
-  return r
+    Tok.whiteSpace lexer
+    r <- p
+    eof
+    return r
 
 parseExpr :: T.Text -> Either ParseError Expr
 parseExpr = parse (contents expr) "<stdin>"
@@ -127,16 +116,10 @@ def = do
     return (Definition n e)
 
 check :: Parser Command
-check = do
-    reserved "Check"
-    e <- expr
-    return (Check e)
+check = reserved "Check" >> Check <$> expr
 
 eval :: Parser Command
-eval = do
-    reserved "Eval"
-    e <- expr
-    return (Eval e)
+eval = reserved "Eval" >> Eval <$> expr
 
 command :: Parser Command
 command = para <|> def <|> check <|> eval

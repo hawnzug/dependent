@@ -4,22 +4,38 @@ and [blog](http://augustss.blogspot.tw/2007/10/simpler-easier-in-recent-paper-si
 
 ### Examples
 ```
-λ> Parameter A : Type 0
-A is assumed.
-λ> Parameter B : A -> Type 0
-B is assumed.
-λ> Parameter Pair : (x : A) -> B x -> Type 0
-Pair is assumed.
-λ> Parameter N : Type 0
-N is assumed.
-λ> Parameter z : N
+λ> Parameter Nat : Type 0
+Nat is assumed.
+λ> Parameter z : Nat
 z is assumed.
-λ> Parameter s : N -> N
+λ> Parameter s : Nat -> Nat
 s is assumed.
-λ> Definition three := fun f : N -> N => fun x : N => f (f (f x))
+λ> Definition three := fun f : Nat -> Nat => fun x : Nat => f (f (f x))
 three is assumed.
 λ> Check three
-((N -> N) -> (N -> N))
+((Nat -> Nat) -> (Nat -> Nat))
 λ> Eval (three (three s)) z
 (s (s (s (s (s (s (s (s (s z)))))))))
+λ> Parameter Bool : Type 0
+Bool is assumed.
+λ> Parameter true : Bool
+true is assumed.
+λ> Parameter false : Bool
+false is assumed.
+λ> Definition DependentSum := fun A : Type 0 => fun B : A -> Type 0 => fun a : A => fun b : B a => fun C : Type 0 => fun f : A -> B a -> C => f a b
+DependentSum is assumed.
+λ> Check DependentSum
+(forall A : Type0 -> (forall B : (A -> Type0) -> (forall a : A -> ((B a) -> (forall C : Type0 -> ((A -> ((B a) -> C)) -> C))))))
+λ> Definition JustBool := fun n : Nat => Bool
+JustBool is assumed.
+λ> Check JustBool
+(Nat -> Type0)
+λ> Definition pair := DependentSum Nat JustBool z true
+pair is assumed.
+λ> Check pair Nat (fun x : Nat => fun y : Bool => x)
+Nat
+λ> Eval pair Nat (fun x : Nat => fun y : Bool => x)
+z
+λ> Eval pair Bool (fun x : Nat => fun y : Bool => y)
+true
 ```
