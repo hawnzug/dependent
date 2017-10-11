@@ -25,6 +25,7 @@ library
                      , text
                      , containers
                      , haskeline
+                     , mtl
   default-language:    Haskell2010
 
 executable dependent-exe

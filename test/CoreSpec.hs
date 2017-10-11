@@ -5,12 +5,11 @@ import Test.Hspec
 import Core
 import Parser
 
-alpha s1 s2 = case parseExpr s1 of
-                Right e1 -> case parseExpr s2 of
-                              Right e2 -> alphaEq e1 e2
-beta s1 s2 = case parseExpr s1 of
-               Right e1 -> case parseExpr s2 of
-                             Right e2 -> betaEq emptyContext e1 e2
+alpha s1 s2 = case (parseExpr s1, parseExpr s2) of
+                (Right e1, Right e2) -> alphaEq e1 e2
+beta  s1 s2 =
+  case (parseExpr s1, parseExpr s2) of
+    (Right e1, Right e2) -> _betaEq e1 e2
 
 spec :: Spec
 spec = do

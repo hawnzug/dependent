@@ -3,21 +3,25 @@ module Core where
 
 import qualified Data.Text as T
 import Syntax
-import Data.List (union, (\\))
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Control.Monad.Reader
+import Control.Monad.Except
 
 type Context = Map.Map Name (Expr, Maybe Expr)
+type Runner a = ReaderT Context (Either T.Text) a
 
-freeVars :: Expr -> [Name]
-freeVars (Var name) = [name]
-freeVars (Universe _) = []
-freeVars (Pi abstr) = freeVars (typ abstr) `union` (freeVars (body abstr) \\ [bound abstr])
-freeVars (Lambda abstr) = freeVars (typ abstr) `union` (freeVars (body abstr) \\ [bound abstr])
-freeVars (App f a) = freeVars f `union` freeVars a
+freeVars :: Expr -> Set Name
+freeVars (Var name) = Set.singleton name
+freeVars (Universe _) = Set.empty
+freeVars (Pi (Abstraction n t e)) = freeVars t `Set.union` (Set.delete n $ freeVars e)
+freeVars (Lambda (Abstraction n t e)) = freeVars t `Set.union` (Set.delete n $ freeVars e)
+freeVars (App f a) = freeVars f `Set.union` freeVars a
 
 subst :: Expr -> Name -> Expr -> Expr
 subst (Var n) x e = if n == x then e else Var n
-subst e@(Universe _) _ _ = e
+subst u@(Universe _) _ _ = u
 subst (App f a) x e = App (subst f x e) (subst a x e)
 subst (Pi abstr) x e = Pi (substAbs abstr x e)
 subst (Lambda abstr) x e = Lambda (substAbs abstr x e)
@@ -36,23 +40,28 @@ substAbs abstr x e
           fvs = freeVars e
           rename e i = loop i
               where loop i' = if i' `elem` vars then loop (T.append i "'") else i'
-                    vars = fvs `union` freeVars e
+                    vars = fvs `Set.union` freeVars e
 
-nf :: Context -> Expr -> Expr
-nf ctx (Var x) = case Map.lookup x ctx of
-                   Just (_, Just e) -> nf ctx e
-                   _ -> Var x
-nf ctx e@(Universe k) = e
-nf ctx (App f a) = case nf ctx f of
-                     Lambda abstr -> nf ctx (subst (body abstr) (bound abstr) (nf ctx a))
-                     e -> App e (nf ctx a)
-nf ctx (Lambda abstr) = Lambda (nfAbstr ctx abstr)
-nf ctx (Pi abstr) = Pi (nfAbstr ctx abstr)
+nf :: Expr -> Runner Expr
+nf (Var name) = do
+  ctx <- ask
+  maybe (return $ Var name) nf (Map.lookup name ctx >>= snd)
+nf e@(Universe k) = return e
+nf (App f a) = do
+  e <- nf f
+  case e of
+    Lambda abstr -> do
+      nfa <- nf a
+      nf $ subst (body abstr) (bound abstr) nfa
+    _ -> App e <$> nf a
+nf (Lambda abstr) = Lambda <$> nfAbstr abstr
+nf (Pi abstr) = Pi <$> nfAbstr abstr
 
-nfAbstr :: Context -> Abstraction -> Abstraction
-nfAbstr ctx abstr = abstr{typ=nt, body=nb}
-    where nt = nf ctx (typ abstr)
-          nb = nf (Map.insert (bound abstr) (nt, Nothing) ctx) (body abstr)
+nfAbstr :: Abstraction -> Runner Abstraction
+nfAbstr abstr = do
+  nt <- nf (typ abstr)
+  nb <- local (Map.insert (bound abstr) (nt, Nothing)) $ nf (body abstr)
+  return abstr{typ=nt, body=nb}
 
 alphaEq :: Expr -> Expr -> Bool
 alphaEq (Var x) (Var y) = x == y
@@ -71,44 +80,52 @@ eqAbstr abs1 abs2 = alphaEq t1 t2 && alphaEq b1 (subst b2 n2 (Var n1))
           t1 = typ abs1
           t2 = typ abs2
 
-betaEq :: Context -> Expr -> Expr -> Bool
-betaEq ctx e1 e2 = alphaEq (nf ctx e1) (nf ctx e2)
+betaEq :: Expr -> Expr -> Runner Bool
+betaEq e1 e2 = do
+  ne1 <- nf e1
+  ne2 <- nf e2
+  return $ alphaEq ne1 ne2
 
-infer :: Context -> Expr -> Either T.Text Expr
-infer ctx (Var x) = case Map.lookup x ctx of
-                      Just (t, _) -> Right t
-                      Nothing -> Left "cannot find var"
-infer ctx (Universe k) = return $ Universe (k+1)
-infer ctx (Pi abstr) = do
-    k1 <- inferUniverse ctx t1
-    k2 <- inferUniverse (Map.insert (bound abstr) (t1, Nothing) ctx) (body abstr)
-    return $ Universe (max k1 k2)
-        where t1 = typ abstr
-infer ctx (Lambda abstr) = do
-    tb <- infer (Map.insert n (t, Nothing) ctx) (body abstr)
-    return $ Pi Abstraction{bound=n, typ=t, body=tb}
-        where n = bound abstr
-              t = typ abstr
-infer ctx (App f a) = do
-    Abstraction{bound=n, typ=t1, body=b} <- inferPi ctx f
-    t2 <- infer ctx a
-    if betaEq ctx t1 t2
-       then return $ subst b n a
-       else Left "function type error"
+infer :: Expr -> Runner Expr
+infer (Var x) = do
+  ctx <- ask
+  case Map.lookup x ctx of
+    Just (t, _) -> return t
+    Nothing -> throwError "cannot find var"
+infer (Universe k) = return $ Universe (k+1)
+infer (Pi abstr) = do
+  let t1 = typ abstr
+  k1 <- inferUniverse t1
+  k2 <- local (Map.insert (bound abstr) (t1, Nothing)) (inferUniverse $ body abstr)
+  return $ Universe (max k1 k2)
+infer (Lambda abstr) = do
+  let n = bound abstr
+      t = typ abstr
+  tb <- local (Map.insert n (t, Nothing)) $ infer (body abstr)
+  return $ Pi Abstraction{bound=n, typ=t, body=tb}
+infer (App f a) = do
+  Abstraction{bound=n, typ=t1, body=b} <- inferPi f
+  t2 <- infer a
+  eq <- betaEq t1 t2
+  if eq
+    then return $ subst b n a
+    else throwError "function type error"
 
-inferUniverse :: Context -> Expr -> Either T.Text Int
-inferUniverse ctx t = do
-    u <- infer ctx t
-    case nf ctx u of
-      Universe k -> return k
-      _ -> Left "type expected"
+inferUniverse :: Expr -> Runner Int
+inferUniverse t = do
+  u <- infer t
+  mu <- nf u
+  case mu of
+    Universe k -> return k
+    _ -> throwError "type expected"
 
-inferPi :: Context -> Expr -> Either T.Text Abstraction
-inferPi ctx e = do
-    t <- infer ctx e
-    case nf ctx t of
-      Pi a -> return a
-      _ -> Left "function expected"
+inferPi :: Expr -> Runner Abstraction
+inferPi e = do
+  t <- infer e
+  mpi <- nf t
+  case mpi of
+    Pi a -> return a
+    _ -> throwError "function expected"
 
 emptyContext :: Context
 emptyContext = Map.empty
@@ -118,3 +135,6 @@ addType n t = Map.insert n (t, Nothing)
 
 addDef :: Name -> Expr -> Expr -> Context -> Context
 addDef n t e = Map.insert n (t, Just e)
+
+_betaEq :: Expr -> Expr -> Bool
+_betaEq e1 e2 = either (const False) id $ runReaderT (betaEq e1 e2) emptyContext
